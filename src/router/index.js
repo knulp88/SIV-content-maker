@@ -1,7 +1,13 @@
 import Vue from 'vue'
 import Router from 'vue-router'
-import SivContentMaker from '@/components/SivContentMaker'
-import ImagesPage from '@/components/ImagesPage'
+import {
+  Main,
+  Image,
+  LinkArea,
+  LinkData,
+  ConfirmContent,
+  ToPublish
+}from '@/containers'
 
 Vue.use(Router)
 
@@ -9,14 +15,34 @@ export default new Router({
   mode: 'history',
   routes: [
     {
-      path: '/',
-      name: 'SivContentMaker',
-      component: SivContentMaker
+      path: '/main',
+      name: 'main',
+      component: Main
     },
     {
-      path: '/imagesPage',
-      name: 'ImagesPage',
-      component: ImagesPage
+      path: '/image',
+      name: 'image',
+      component: Image
+    },
+    {
+      path: '/link-area',
+      name: 'link-area',
+      component: LinkArea
+    },
+    {
+      path: '/link-data',
+      name: 'link-data',
+      component: LinkData
+    },
+    {
+      path: '/confirm-content',
+      name: 'confirm-content',
+      component: ConfirmContent
+    },
+    {
+      path: '/to-publish',
+      name: 'to-publish',
+      component: ToPublish
     }
   ]
 })
