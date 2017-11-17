@@ -1,8 +1,15 @@
 <template>
   <!-- loaded image -->
   <div>
-    <div class="image-wrap" v-for=" ( item, index ) in $store.state.image.currentUploadFile" :key="item.index">
+    <div
+      class="image-wrap"
+      v-for=" ( item, index ) in $store.state.image.currentUploadFile"
+      :key="item.index"
+      :style="{
+        width : getSize($store.state.image.currentUploadFile[index].dataUrl, true) + 'px'
+      }">
       <img :src="$store.state.image.currentUploadFile[index].dataUrl" alt="" >
+
       <canvas
         v-if="$route.path === '/link-area'"
         :id="'linkArea-' + index"
@@ -14,11 +21,13 @@
         @mouseup="drawEnd($event, index)"
         @mousemove="drawing($event, index)">
       </canvas>
+
       <div
         v-if="$route.path === '/link-area'"
         :class="'dimed item-'+index"
         @click="activateArea(index, false)">
       </div>
+
     </div>
   </div>
 </template>
@@ -28,7 +37,10 @@ export default {
   data() {
     name: "load-images";
     return {
-      areaData: []
+      areaData: [],
+      areaDefault: {
+        minPixel: 10
+      }
     };
   },
   mounted() {
@@ -66,33 +78,41 @@ export default {
       else wrapEl[idx].classList.remove("is-active");
     },
     drawStart(evt, idx) {
-      const { linkArea, basePos, canvas, ctx } = this.areaData[idx];
+      const { basePos } = this.areaData[idx];
 
       this.areaData[idx].isDrawing = true;
       basePos.x = evt.offsetX;
       basePos.y = evt.offsetY;
-      
     },
     drawEnd(evt, idx) {
-      const { linkArea, basePos, canvas, ctx } = this.areaData[idx];
+      const { linkArea, basePos: { x, y }, canvas, ctx } = this.areaData[idx];
+      const wid = evt.offsetX - x;
+      const hei = evt.offsetY - y;
 
       this.areaData[idx].isDrawing = false;
-      
-      linkArea.push({
-        x: basePos.x,
-        y: basePos.y,
-        wid: evt.offsetX - basePos.x,
-        hei: evt.offsetY - basePos.y
-      });
+
+      if (
+        Math.abs(wid) > this.areaDefault.minPixel &&
+        Math.abs(hei) > this.areaDefault.minPixel
+      ) {
+        console.log(linkArea);
+        linkArea.push({
+          zIdx: linkArea.length,
+          x,
+          y,
+          wid,
+          hei
+        });
+      }
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      this.drawRectangles(evt, idx)
-      
+      this.drawRectangles(evt, idx);
     },
     drawing(evt, idx) {
       const { basePos, canvas, isDrawing, isActive, ctx } = this.areaData[idx];
       if (isDrawing && isActive) {
-        
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        this.drawRectangles(evt, idx);
         ctx.beginPath();
         ctx.rect(
           basePos.x,
@@ -103,18 +123,20 @@ export default {
         ctx.strokeStyle = "cyan";
         ctx.lineWidth = 1;
         ctx.stroke();
-        this.drawRectangles(evt, idx)
       }
     },
-    drawRectangles(evt, idx){
+    drawRectangles(evt, idx) {
       for (let i = 0; i < this.areaData[idx].linkArea.length; i++) {
-        this.areaData[idx].ctx.fillRect(
-          this.areaData[idx].linkArea[i].x,
-          this.areaData[idx].linkArea[i].y,
-          this.areaData[idx].linkArea[i].wid,
-          this.areaData[idx].linkArea[i].hei
-        );
-        this.areaData[idx].ctx.fillStyle = "rgba(206, 0, 0, 0.5)"; 
+        const { ctx, linkArea } = this.areaData[idx];
+        const { x, y, wid, hei } = linkArea[i];
+
+        ctx.fillStyle = "rgba(206, 0, 0, 0.5)";
+        ctx.fillRect(x, y, wid, hei); // rendering area
+
+        ctx.font = '50px serif'; // font size is half of area width
+        ctx.fillStyle = "rgba(255,255,255,1)"; // text color black
+        ctx.fillText(linkArea[i].zIdx, x, y); // rendering area Index
+    
       }
     }
   }
@@ -130,8 +152,10 @@ export default {
 }
 .image-wrap {
   position: relative;
+  margin: 0 auto;
+  z-index: 10;
   &.is-active {
-    z-index: 10;
+    z-index: 11;
   }
   &.is-active:after {
     @border-line : 2px;
