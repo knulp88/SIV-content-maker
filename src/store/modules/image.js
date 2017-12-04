@@ -39,7 +39,6 @@ const actions = {
   uploadFiles: ({ commit, state }, payload) => {
     const { evt } = payload;
     let files = evt.target.files;
-    console.log(files)
     for (let i = 0; i < files.length; i++) {
       const reader = new FileReader();
       const { name } = files[i];

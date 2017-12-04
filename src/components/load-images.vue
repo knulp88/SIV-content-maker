@@ -16,16 +16,20 @@
         :width="getSize($store.state.image.currentUploadFile[index].dataUrl, true)"
         :height="getSize($store.state.image.currentUploadFile[index].dataUrl, false)"
 
-        @click="activateArea(index, true)"
         @mousedown="drawStart($event, index)"
-        @mouseup="drawEnd($event, index)"
-        @mousemove="drawing($event, index)">
+        @mouseup="
+          !areaData[index].isActive ? activateArea(index, true) : '',
+          areaData[index].selectedArea === null ? drawEnd($event, index) : '',
+          selectArea($event, index)
+        "
+        @mouseleave="areaData[index].selectedArea === null ? drawEnd($event, index) : ''"
+        @mousemove="areaData[index].selectedArea === null ? drawing($event, index) : ''">
       </canvas>
 
       <div
         v-if="$route.path === '/link-area'"
         :class="'dimed item-'+index"
-        @click="activateArea(index, false)">
+        @click="areaData[index].isActive ? activateArea(index, false) : ''">
       </div>
 
     </div>
@@ -55,6 +59,8 @@ export default {
           ctx: canvas[i].getContext("2d"),
           isActive: false,
           isDrawing: false,
+          isSelectable: false,
+          selectedArea: null,
           linkArea: [],
           basePos: { x: 0, y: 0 }
         });
@@ -62,57 +68,75 @@ export default {
     }
   },
   methods: {
+    // get base64 image width, height
     getSize(dataUrl, bool) {
       const img = new Image();
       img.src = dataUrl;
       return bool ? img.width : img.height;
     },
+    // activate canvas
     activateArea(idx, bool) {
       const wrapEl = document.getElementsByClassName("image-wrap");
       const dimedEl = document.querySelector(".dimed.item-" + idx);
 
-      this.areaData[idx].isActive = bool ? true : false;
+      this.areaData[idx].isActive = bool ? true : false; // activate state
       dimedEl.style.display = bool ? "block" : "none";
 
       if (bool) wrapEl[idx].classList.add("is-active");
       else wrapEl[idx].classList.remove("is-active");
     },
+    // mouse down event
     drawStart(evt, idx) {
       const { basePos } = this.areaData[idx];
-
-      this.areaData[idx].isDrawing = true;
-      basePos.x = evt.offsetX;
-      basePos.y = evt.offsetY;
+      if (
+        this.areaData[idx].isActive &&
+        this.areaData[idx].selectedArea === null
+      ) {
+        this.areaData[idx].isDrawing = true;
+        basePos.x = evt.offsetX;
+        basePos.y = evt.offsetY;
+      }
+      this.areaData[idx].isSelectable = true;
     },
     drawEnd(evt, idx) {
-      const { linkArea, basePos: { x, y }, canvas, ctx } = this.areaData[idx];
+      const {
+        linkArea,
+        basePos: { x, y },
+        canvas,
+        ctx,
+        isDrawing,
+        isActive
+      } = this.areaData[idx];
       const wid = evt.offsetX - x;
       const hei = evt.offsetY - y;
+      if (isDrawing && isActive) {
+        this.areaData[idx].isDrawing = false;
 
-      this.areaData[idx].isDrawing = false;
+        if (
+          Math.abs(wid) > this.areaDefault.minPixel &&
+          Math.abs(hei) > this.areaDefault.minPixel
+        ) {
+          linkArea.push({
+            zIdx: linkArea.length,
+            x: wid < 0 ? x + wid : x,
+            y: hei < 0 ? y + hei : y,
+            wid: wid < 0 ? x - (x + wid) : wid,
+            hei: hei < 0 ? y - (y + hei) : hei,
+            isSelect: false
+          });
+          this.areaData[idx].isSelectable = false;
+        }
 
-      if (
-        Math.abs(wid) > this.areaDefault.minPixel &&
-        Math.abs(hei) > this.areaDefault.minPixel
-      ) {
-        console.log(linkArea);
-        linkArea.push({
-          zIdx: linkArea.length,
-          x,
-          y,
-          wid,
-          hei
-        });
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        this.drawRectangles(idx);
       }
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      this.drawRectangles(evt, idx);
     },
     drawing(evt, idx) {
       const { basePos, canvas, isDrawing, isActive, ctx } = this.areaData[idx];
+
       if (isDrawing && isActive) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        this.drawRectangles(evt, idx);
+        this.drawRectangles(idx);
         ctx.beginPath();
         ctx.rect(
           basePos.x,
@@ -125,18 +149,72 @@ export default {
         ctx.stroke();
       }
     },
-    drawRectangles(evt, idx) {
+    selectArea(evt, idx) {
+      if (!this.areaData[idx].isSelectable) return;
+
+      const { basePos, canvas, ctx, linkArea, isDrawing } = this.areaData[idx];
+      let af = null;
+      let result = null;
+
+      if (linkArea.length > 0) {
+
+        for (let i = 0; i < linkArea.length; i++) {
+          this.areaData[idx].linkArea[i].isSelect = false;
+          if (
+            evt.offsetX > linkArea[i].x &&
+            evt.offsetX < linkArea[i].x + linkArea[i].wid &&
+            evt.offsetY > linkArea[i].y &&
+            evt.offsetY < linkArea[i].y + linkArea[i].hei
+          ) {
+            result = i;
+          }
+        }
+        if (result !== null) {
+          this.areaData[idx].linkArea[result].isSelect = true; // select state update
+          this.areaData[idx].selectedArea = this.areaData[idx].linkArea[result]; // init select area data
+          
+        } else {
+          this.areaData[idx].selectedArea = null; // init select area data
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // clear canvas
+        this.drawRectangles(idx); // render canvas
+        this.areaData[idx].isSelectable = false;
+
+      }
+    },
+    drawRectangles(idx) {
       for (let i = 0; i < this.areaData[idx].linkArea.length; i++) {
         const { ctx, linkArea } = this.areaData[idx];
-        const { x, y, wid, hei } = linkArea[i];
+        const { x, y, wid, hei, isSelect } = linkArea[i];
+        const fs = wid < hei ? wid / 2 : hei / 2;
 
-        ctx.fillStyle = "rgba(206, 0, 0, 0.5)";
-        ctx.fillRect(x, y, wid, hei); // rendering area
+        // fill color to selected or default link area
+        ctx.fillStyle = isSelect
+          ? "rgba(255, 0, 0, 0.5)"
+          : "rgba(0, 255, 255, 0.5)";
+        // link area render
+        ctx.fillRect(x + 0.5, y + 0.5, wid, hei);
 
-        ctx.font = '50px serif'; // font size is half of area width
-        ctx.fillStyle = "rgba(255,255,255,1)"; // text color black
-        ctx.fillText(linkArea[i].zIdx, x, y); // rendering area Index
-    
+        ctx.lineWidth = 1;
+        if (isSelect) {
+          console.log('aaaa')
+          ctx.strokeStyle = "rgba(255, 255, 255, 1)";
+          ctx.strokeRect(x + 0.5, y + 0.5, wid, hei);
+        } else {
+          ctx.strokeStyle = "rgba(0, 0, 0, 1)";
+          ctx.strokeRect(x + 0.5, y + 0.5, wid, hei); 
+        }
+
+        // link area indexing render
+        ctx.font = `${fs}px san-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.strokeStyle = "black";
+        ctx.lineWidth = fs / 10;
+        ctx.strokeText(linkArea[i].zIdx + 1, x + wid / 2, y + hei / 2);
+        ctx.fillStyle = "rgba(255,255,255,1)";
+        ctx.fillText(linkArea[i].zIdx + 1, x + wid / 2, y + hei / 2);
       }
     }
   }
@@ -186,5 +264,8 @@ canvas {
   top: 0;
   left: 0;
   z-index: 10;
+  &.isDrawing {
+    cursor: crosshair;
+  }
 }
 </style>
