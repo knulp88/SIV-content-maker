@@ -4,7 +4,7 @@ import Vue from 'vue'
 import App from './App'
 import router from './router'
 import store from './store/index'
-import ls from './local-storage/ls';
+import ls from './assets/libs/local-storage/ls';
 
 Vue.config.productionTip = false
 

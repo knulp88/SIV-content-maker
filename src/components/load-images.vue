@@ -26,9 +26,19 @@
         @mousemove="
           areaData[index].selectedArea === null ? drawing($event, index) : modifing($event, index),
           mouseCursor($event, index)"
-        >
+        @dblclick="dbclick($event, index)">
       </canvas>
 
+      <ul
+        class="linkArea-dots"
+        v-if="linkListOn">
+        <li
+          class="list-item"
+          v-for="item in areaData[index].linkArea" :key="item.zIdx">
+          {{ item.zIdx + 1 }}
+        </li>
+      </ul>
+      
       <div
         v-if="$route.path === '/link-area'"
         :class="'dimed item-'+index"
@@ -40,19 +50,34 @@
 </template>
 
 <script>
+import Event from "../assets/libs/event-namespace";
 export default {
   data() {
-    name: "load-images";
     return {
       areaData: [],
       areaDefault: {
         minPixel: 10,
         scaleArea: 10
-      }
+      },
+      keyEvt: {},
+      activatedAreaIndex: null,
+      linkListOn: false
     };
   },
+  destroyed() {
+    // REMOVE KEYBOARD EVENT
+    if (Event.functionMap) {
+      for (const i in Event.functionMap) {
+        if (Event.functionMap.hasOwnProperty(i)) {
+          Event.removeEventListener(i);
+        }
+      }
+    }
+  },
   mounted() {
+    // CHECK ROUTE PATH
     if (this.$route.path === "/link-area") {
+      // INITIALIZE DATA SET
       const canvas = Array.prototype.slice.call(
         document.getElementsByTagName("canvas")
       );
@@ -64,56 +89,116 @@ export default {
           isActive: false,
           isDrawing: false,
           isModify: null, // position, scale
+          isAllAreaLinked: false,
           selectedArea: null,
           linkArea: [],
           basePos: { x: 0, y: 0, gapX: 0, gapY: 0 }
         });
       }
+
+      this.$nextTick(() => {
+        this.linkListOn = true;
+      });
+
+      const keyEvt = {
+        ["keydown-MODIFY"]: e => {
+          const checkKeyCode = e.keyCode.toString().match(/37|38|39|40/);
+          if (
+            checkKeyCode !== null &&
+            this.activatedAreaIndex !== null &&
+            this.areaData[this.activatedAreaIndex].selectedArea
+          ) {
+            e.preventDefault();
+            const canvasIndex = this.activatedAreaIndex;
+            const linkAreaIndex = this.areaData[this.activatedAreaIndex]
+              .selectedArea.zIdx;
+            const t = [e.metaKey ? "wid" : "x", e.metaKey ? "hei" : "y"];
+            const q = e.shiftKey ? 10 : 1;
+
+            if (checkKeyCode[0] === "37" || checkKeyCode[0] === "39") {
+              this.areaData[canvasIndex].linkArea[linkAreaIndex][t[0]] +=
+                checkKeyCode[0] === "37" ? q * -1 : q;
+            } else if (checkKeyCode[0] === "38" || checkKeyCode[0] === "40") {
+              this.areaData[canvasIndex].linkArea[linkAreaIndex][t[1]] +=
+                checkKeyCode[0] === "38" ? q * -1 : q;
+            }
+
+            this.areaData[canvasIndex].ctx.clearRect(
+              0,
+              0,
+              this.areaData[canvasIndex].canvas.width,
+              this.areaData[canvasIndex].canvas.height
+            );
+            this.renderRectangles(canvasIndex);
+          }
+        },
+        ["keydown-DELETE"]: e => {
+          if (
+            (e.keyCode === 46 || e.keyCode === 8) &&
+            this.activatedAreaIndex !== null &&
+            this.areaData[this.activatedAreaIndex].selectedArea
+          ) {
+            const canvasIndex = this.activatedAreaIndex;
+            const linkAreaIndex = this.areaData[this.activatedAreaIndex]
+              .selectedArea.zIdx;
+
+            // deleted area splice
+            this.areaData[canvasIndex].linkArea.splice(linkAreaIndex, 1);
+
+            // area numbering reset
+            if (this.areaData[canvasIndex].linkArea.length > 1) {
+              for (
+                let i = 0;
+                i < this.areaData[canvasIndex].linkArea.length;
+                i++
+              ) {
+                this.areaData[canvasIndex].linkArea[i].zIdx = i;
+              }
+            }
+
+            this.areaData[canvasIndex].ctx.clearRect(
+              0,
+              0,
+              this.areaData[canvasIndex].canvas.width,
+              this.areaData[canvasIndex].canvas.height
+            );
+            this.renderRectangles(canvasIndex);
+
+            this.areaData[canvasIndex].isModify = null;
+            this.areaData[canvasIndex].selectedArea = null;
+          }
+        }
+      };
+      // add Events to global.
+      for (const i in keyEvt) {
+        Event.addEventListener(i, keyEvt[i]);
+      }
     }
   },
   methods: {
-    // mouse cursor set
-    mouseCursor(evt, idx) {
-      const {
-        canvas,
-        linkArea,
-        isDrawing,
-        isActive,
-        isModify,
-        selectedArea
-      } = this.areaData[idx];
-      const isOnLinkArea =
-        this.getMousePosition(evt, idx) !== null ? true : false;
-      const point = this.getScalePoint(evt, idx);
-      if (isActive && !isOnLinkArea) {
-        // drawing
-        canvas.style.cursor = "crosshair";
-      } else if (isOnLinkArea && selectedArea && point) {
-        // on selected link area and scale fix
-        if (point === "NW") canvas.style.cursor = "nw-resize";
-        else if (point === "NE") canvas.style.cursor = "ne-resize";
-        else if (point === "SW") canvas.style.cursor = "sw-resize";
-        else if (point === "SE") canvas.style.cursor = "se-resize";
-        else if (point === "N") canvas.style.cursor = "n-resize";
-        else if (point === "S") canvas.style.cursor = "s-resize";
-        else if (point === "W") canvas.style.cursor = "w-resize";
-        else if (point === "E") canvas.style.cursor = "e-resize";
-      } else if (isOnLinkArea && selectedArea && !point) {
-        // on selected link area and position fix
-        canvas.style.cursor = "move";
-      } else if (isOnLinkArea && !selectedArea) {
-        // on not selected link area
-        canvas.style.cursor = "pointer";
+    dbclick(evt, idx) {
+      const { selectedArea, canvas, ctx } = this.areaData[idx];
+      if (!selectedArea) {
+        alert("select all area of image");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        this.areaData[idx].linkArea = [];
+        this.areaData[idx].linkArea.push({
+          zIdx: this.areaData[idx].linkArea.length,
+          x: 0,
+          y: 0,
+          wid: canvas.width,
+          hei: canvas.height,
+          isSelect: false
+        });
+        this.renderRectangles(idx);
       }
     },
-
     // get base64 image width, height
     getSize(dataUrl, bool) {
       const img = new Image();
       img.src = dataUrl;
       return bool ? img.width : img.height;
     },
-
     // activate canvas
     activateArea(idx, bool) {
       const wrapEl = document.getElementsByClassName("image-wrap");
@@ -122,6 +207,8 @@ export default {
 
       // activate state
       this.areaData[idx].isActive = bool ? true : false;
+      this.activatedAreaIndex = bool ? idx : null;
+
       dimedEl.style.display = bool ? "block" : "none";
 
       if (bool) {
@@ -137,7 +224,35 @@ export default {
         this.renderRectangles(idx);
       }
     },
+    // mouse cursor set
+    mouseCursor(evt, idx) {
+      const {
+        canvas,
+        linkArea,
+        isDrawing,
+        isActive,
+        isModify,
+        selectedArea
+      } = this.areaData[idx];
 
+      const isOnLinkArea =
+        this.getMousePosition(evt, idx) !== null ? true : false;
+
+      const point = this.getScalePoint(evt, idx);
+
+      if (isActive && !isOnLinkArea) {
+        // drawing
+        canvas.style.cursor = "crosshair";
+      } else if (isOnLinkArea && selectedArea && point) {
+        canvas.style.cursor = `${point.toLowerCase()}-resize`;
+      } else if (isOnLinkArea && selectedArea && !point) {
+        // on selected link area and position fix
+        canvas.style.cursor = "move";
+      } else if (isOnLinkArea && !selectedArea) {
+        // on not selected link area
+        canvas.style.cursor = "pointer";
+      }
+    },
     // mouse interaction start
     mouseInteractionStart(evt, idx) {
       const { basePos, isActive, linkArea, selectedArea } = this.areaData[idx];
@@ -257,23 +372,18 @@ export default {
         function reverseDirection(vm) {
           // reset direction
           if (hei < 1 && wid >= 0) {
-
             vm.areaData[idx].isModify = scalePoint.includes("N")
               ? `SCALE-${scalePoint.replace("N", "S")}`
               : `SCALE-${scalePoint.replace("S", "N")}`;
 
             fs.hei = 1;
-
           } else if (wid < 1 && hei >= 0) {
-
             vm.areaData[idx].isModify = scalePoint.includes("W")
               ? `SCALE-${scalePoint.replace("W", "E")}`
               : `SCALE-${scalePoint.replace("E", "W")}`;
 
             fs.wid = 1;
-
           } else if (wid < 1 && hei < 1) {
-
             if (scalePoint.includes("N")) {
               vm.areaData[idx].isModify =
                 scalePoint === "NW" ? `SCALE-SE` : `SCALE-SW`;
@@ -284,7 +394,6 @@ export default {
 
             fs.wid = 1;
             fs.hei = 1;
-
           }
         }
 
@@ -349,14 +458,14 @@ export default {
       const df = this.areaDefault.scaleArea;
       const { selectedArea: { x, y, wid, hei } } = this.areaData[idx];
       const points = {
-        NW: { x: x, y: y, wid: x + df, hei: y + df }, // NW
-        SE: { x: x + wid - df, y: y + hei - df, wid: x + wid, hei: y + hei }, // SE
-        NE: { x: x + wid - df, y: y, wid: x + wid, hei: y + df }, // NE
-        SW: { x: x, y: y + hei - df, wid: x + df, hei: y + hei }, // SW
-        N: { x: x + df, y: y, wid: x + wid - df, hei: y + df }, // N
-        S: { x: x + df, y: y + hei - df, wid: x + wid - df, hei: y + hei }, // S
-        W: { x: x, y: y + df, wid: x + df, hei: y + hei - df }, // W
-        E: { x: x + wid - df, y: y + df, wid: x + wid, hei: y + hei - df } // E
+        NW: { x: x, y: y, wid: x + df, hei: y + df },
+        SE: { x: x + wid - df, y: y + hei - df, wid: x + wid, hei: y + hei },
+        NE: { x: x + wid - df, y: y, wid: x + wid, hei: y + df },
+        SW: { x: x, y: y + hei - df, wid: x + df, hei: y + hei },
+        N: { x: x + df, y: y, wid: x + wid - df, hei: y + df },
+        S: { x: x + df, y: y + hei - df, wid: x + wid - df, hei: y + hei },
+        W: { x: x, y: y + df, wid: x + df, hei: y + hei - df },
+        E: { x: x + wid - df, y: y + df, wid: x + wid, hei: y + hei - df }
       };
 
       for (const i in points) {
@@ -457,6 +566,27 @@ export default {
     z-index: 9;
   }
 }
+.linkArea-dots {
+  position: absolute;
+  display: flex;
+  flex-flow: column wrap;
+  left: 100%;
+  top: 0;
+  height: 100%;
+  & .list-item {
+    margin: 10px 0 10px 12px;
+    width: 30px;
+    height: 30px;
+    border-radius: 5px 5px;
+    background: #fff;
+    color: #212121;
+    font-size: 20px;
+    font-weight: bold;
+    line-height: 30px;
+
+    cursor: pointer;
+  }
+}
 .dimed {
   position: fixed;
   display: none;
@@ -476,5 +606,13 @@ canvas {
   &.isDrawing {
     cursor: crosshair;
   }
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.5s;
+}
+.fade-enter,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

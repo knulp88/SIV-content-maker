@@ -34,7 +34,6 @@ export default {
 
 <style lang="less" scoped>
 .link-area-wrap {
-  width: 1200px; // not consider wide content
   margin: 0 auto;
 }
 </style>
